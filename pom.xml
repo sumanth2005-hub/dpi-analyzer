@@ -30,16 +30,35 @@
 		<java.version>17</java.version>
 	</properties>
 	<dependencies>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-		</dependency>
 
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
-			<scope>test</scope>
-		</dependency>
+			<!-- Pcap4j Core - packet capture -->
+			<dependency>
+				<groupId>org.pcap4j</groupId>
+				<artifactId>pcap4j-core</artifactId>
+				<version>1.8.2</version>
+			</dependency>
+
+			<!-- Pcap4j Packet Factory - packet DECODING (THIS WAS MISSING!) -->
+			<dependency>
+				<groupId>org.pcap4j</groupId>
+				<artifactId>pcap4j-packetfactory-static</artifactId>
+				<version>1.8.2</version>
+			</dependency>
+
+			<!-- Spring Boot Web -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-web</artifactId>
+			</dependency>
+
+			<!-- Spring Boot Test -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-test</artifactId>
+				<scope>test</scope>
+			</dependency>
+
+
 	</dependencies>
 
 	<build>
