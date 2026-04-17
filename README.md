@@ -69,7 +69,6 @@ Make sure you have:
 Download and install from:
 https://npcap.com
 
-👉 أثناء installation:
 
 * Enable **WinPcap API-compatible mode**
 
