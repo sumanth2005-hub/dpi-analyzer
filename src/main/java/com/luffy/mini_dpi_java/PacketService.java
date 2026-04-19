@@ -7,13 +7,17 @@ import org.pcap4j.packet.UdpPacket;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class PacketService {
 
+    // Thread-safe packet storage
+    private final List<PacketLog> packetList = new CopyOnWriteArrayList<>();
+
     public void startCapture() throws Exception {
 
-        // STEP 1: List all interfaces
+        // STEP 1: List interfaces
         System.out.println("===== AVAILABLE INTERFACES =====");
         List<PcapNetworkInterface> allDevs = Pcaps.findAllDevs();
 
@@ -25,77 +29,116 @@ public class PacketService {
             System.out.println(dev.getName() + " -> " + dev.getDescription());
         }
 
-        // STEP 2: Select active interface (non-loopback, running, has addresses)
+        // STEP 2: Select active interface
         PcapNetworkInterface nif = allDevs.stream()
                 .filter(dev -> {
                     try {
+                        String desc = dev.getDescription() == null ? "" : dev.getDescription().toLowerCase();
+
                         return dev.isRunning()
                                 && !dev.isLoopBack()
-                                && dev.getAddresses().size() > 0;
+                                && dev.getAddresses().size() > 0
+                                && (
+                                desc.contains("wi-fi") ||
+                                        desc.contains("wireless") ||
+                                        desc.contains("realtek") ||
+                                        desc.contains("ethernet")
+                        )
+                                && !desc.contains("bluetooth");
                     } catch (Exception e) {
                         return false;
                     }
                 })
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("No active network interface found"));
+                .orElseThrow(() -> new RuntimeException("No suitable internet interface found"));
 
-        System.out.println("✅ SELECTED: " + nif.getName() + " -> " + nif.getDescription());
-        System.out.println("IS RUNNING: " + nif.isRunning());
-        System.out.println("IS LOOPBACK: " + nif.isLoopBack());
+        System.out.println(" SELECTED: " + nif.getName() + " -> " + nif.getDescription());
 
-        // STEP 3: Open the handle
+        // STEP 3: Open handle
         PcapHandle handle = nif.openLive(
-                65536,                                          // snaplen: max bytes per packet
+                65536,
                 PcapNetworkInterface.PromiscuousMode.PROMISCUOUS,
-                10                                              // timeout in ms
+                10
         );
 
-        // STEP 4: Apply BPF filter — only capture IPv4 packets
+        // STEP 4: Apply filter
         handle.setFilter("ip", BpfProgram.BpfCompileMode.OPTIMIZE);
 
         System.out.println("🚀 Capture started...");
 
-        // STEP 5: Define the packet listener
+        //  STEP 5: LISTENER (THIS IS STEP 3 LOGIC AREA)
         PacketListener listener = packet -> {
             try {
-                // Now works because pcap4j-packetfactory-static is present
-                if (packet.contains(IpV4Packet.class)) {
-                    IpV4Packet ip = packet.get(IpV4Packet.class);
-                    String src = ip.getHeader().getSrcAddr().getHostAddress();
-                    String dst = ip.getHeader().getDstAddr().getHostAddress();
-                    String protocol = ip.getHeader().getProtocol().name();
 
-                    // Detect TCP vs UDP for richer output
-                    if (packet.contains(TcpPacket.class)) {
-                        TcpPacket tcp = packet.get(TcpPacket.class);
-                        System.out.printf("[TCP] %s:%d → %s:%d%n",
-                                src, tcp.getHeader().getSrcPort().valueAsInt(),
-                                dst, tcp.getHeader().getDstPort().valueAsInt());
+                if (!packet.contains(IpV4Packet.class)) return;
 
-                    } else if (packet.contains(UdpPacket.class)) {
-                        UdpPacket udp = packet.get(UdpPacket.class);
-                        System.out.printf("[UDP] %s:%d → %s:%d%n",
-                                src, udp.getHeader().getSrcPort().valueAsInt(),
-                                dst, udp.getHeader().getDstPort().valueAsInt());
+                IpV4Packet ip = packet.get(IpV4Packet.class);
 
-                    } else {
-                        System.out.printf("[%s] SRC: %s → DST: %s%n", protocol, src, dst);
-                    }
+                String srcIp = ip.getHeader().getSrcAddr().getHostAddress();
+                String dstIp = ip.getHeader().getDstAddr().getHostAddress();
+                String protocol = ip.getHeader().getProtocol().name();
+
+                int srcPort = -1;
+                int dstPort = -1;
+
+                // TCP
+                if (packet.contains(TcpPacket.class)) {
+                    TcpPacket tcp = packet.get(TcpPacket.class);
+                    srcPort = tcp.getHeader().getSrcPort().valueAsInt();
+                    dstPort = tcp.getHeader().getDstPort().valueAsInt();
                 }
+
+                // UDP
+                else if (packet.contains(UdpPacket.class)) {
+                    UdpPacket udp = packet.get(UdpPacket.class);
+                    srcPort = udp.getHeader().getSrcPort().valueAsInt();
+                    dstPort = udp.getHeader().getDstPort().valueAsInt();
+                }
+
+                // CREATE OBJECT
+                PacketLog log = new PacketLog(
+                        srcIp,
+                        dstIp,
+                        srcPort,
+                        dstPort,
+                        protocol
+                );
+
+                //  STORE PACKET
+                packetList.add(log);
+
+                // LIMIT SIZE (prevents memory overflow)
+                if (packetList.size() > 1000) {
+                    packetList.remove(0);
+                }
+
+                // DEBUG (optional)
+                System.out.println(
+                        "Captured: " + srcIp +
+                                " → " + dstIp +
+                                " | " + protocol +
+                                " | " + srcPort + " → " + dstPort
+                );
+
             } catch (Exception e) {
                 System.err.println("Error processing packet: " + e.getMessage());
             }
         };
 
-        // STEP 6: Run capture in background thread (so Spring Boot doesn't block)
+        // STEP 6: Background thread
         new Thread(() -> {
             try {
-                handle.loop(-1, listener); // -1 = infinite loop
+                handle.loop(-1, listener);
             } catch (InterruptedException e) {
                 System.out.println("Capture stopped.");
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }, "packet-capture-thread").start(); // give thread a name — good practice
+        }, "packet-capture-thread").start();
+    }
+
+    //  API access
+    public List<PacketLog> getPackets() {
+        return packetList;
     }
 }
