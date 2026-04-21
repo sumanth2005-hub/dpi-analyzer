@@ -1,9 +1,6 @@
 package com.luffy.mini_dpi_java;
 
 import org.pcap4j.core.*;
-import org.pcap4j.packet.IpV4Packet;
-import org.pcap4j.packet.TcpPacket;
-import org.pcap4j.packet.UdpPacket;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -12,8 +9,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Service
 public class PacketService {
 
-    // Thread-safe packet storage
     private final List<PacketLog> packetList = new CopyOnWriteArrayList<>();
+    private final PacketParser parser = new PacketParser();
 
     public void startCapture() throws Exception {
 
@@ -34,7 +31,6 @@ public class PacketService {
                 .filter(dev -> {
                     try {
                         String desc = dev.getDescription() == null ? "" : dev.getDescription().toLowerCase();
-
                         return dev.isRunning()
                                 && !dev.isLoopBack()
                                 && dev.getAddresses().size() > 0
@@ -52,7 +48,7 @@ public class PacketService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("No suitable internet interface found"));
 
-        System.out.println(" SELECTED: " + nif.getName() + " -> " + nif.getDescription());
+        System.out.println("SELECTED: " + nif.getName() + " -> " + nif.getDescription());
 
         // STEP 3: Open handle
         PcapHandle handle = nif.openLive(
@@ -64,61 +60,21 @@ public class PacketService {
         // STEP 4: Apply filter
         handle.setFilter("ip", BpfProgram.BpfCompileMode.OPTIMIZE);
 
-        System.out.println("🚀 Capture started...");
+        System.out.println("Capture started...");
 
-        //  STEP 5: LISTENER (THIS IS STEP 3 LOGIC AREA)
+        // STEP 5: Listener — clean, parser does the work
         PacketListener listener = packet -> {
             try {
+                PacketLog log = parser.parse(packet);
+                if (log == null) return;
 
-                if (!packet.contains(IpV4Packet.class)) return;
-
-                IpV4Packet ip = packet.get(IpV4Packet.class);
-
-                String srcIp = ip.getHeader().getSrcAddr().getHostAddress();
-                String dstIp = ip.getHeader().getDstAddr().getHostAddress();
-                String protocol = ip.getHeader().getProtocol().name();
-
-                int srcPort = -1;
-                int dstPort = -1;
-
-                // TCP
-                if (packet.contains(TcpPacket.class)) {
-                    TcpPacket tcp = packet.get(TcpPacket.class);
-                    srcPort = tcp.getHeader().getSrcPort().valueAsInt();
-                    dstPort = tcp.getHeader().getDstPort().valueAsInt();
-                }
-
-                // UDP
-                else if (packet.contains(UdpPacket.class)) {
-                    UdpPacket udp = packet.get(UdpPacket.class);
-                    srcPort = udp.getHeader().getSrcPort().valueAsInt();
-                    dstPort = udp.getHeader().getDstPort().valueAsInt();
-                }
-
-                // CREATE OBJECT
-                PacketLog log = new PacketLog(
-                        srcIp,
-                        dstIp,
-                        srcPort,
-                        dstPort,
-                        protocol
-                );
-
-                //  STORE PACKET
                 packetList.add(log);
 
-                // LIMIT SIZE (prevents memory overflow)
                 if (packetList.size() > 1000) {
                     packetList.remove(0);
                 }
 
-                // DEBUG (optional)
-                System.out.println(
-                        "Captured: " + srcIp +
-                                " → " + dstIp +
-                                " | " + protocol +
-                                " | " + srcPort + " → " + dstPort
-                );
+                System.out.println("Captured: " + log);
 
             } catch (Exception e) {
                 System.err.println("Error processing packet: " + e.getMessage());
@@ -137,7 +93,6 @@ public class PacketService {
         }, "packet-capture-thread").start();
     }
 
-    //  API access
     public List<PacketLog> getPackets() {
         return packetList;
     }

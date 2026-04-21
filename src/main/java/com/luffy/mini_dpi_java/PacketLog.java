@@ -17,7 +17,10 @@ public class PacketLog {
         this.protocol = protocol;
         this.timestamp = System.currentTimeMillis();
     }
-
+    @Override
+    public String toString() {
+        return srcIp + ":" + srcPort + " → " + dstIp + ":" + dstPort + " [" + protocol + "]";
+    }
     // Getters only (important for JSON)
     public String getSrcIp() { return srcIp; }
     public String getDstIp() { return dstIp; }
