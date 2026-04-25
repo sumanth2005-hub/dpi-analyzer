@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DPI Packet Monitor</title>
+    <style>
+        body {
+            background-color: #0d0d0d;
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00ff88;
+            letter-spacing: 2px;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            background: #1a1a1a;
+            border: 1px solid #00ff88;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .stat-box .label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .stat-box .value {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            background: #111;
+            color: #00ff88;
+            padding: 10px;
+            border: 1px solid #333;
+            text-align: left;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #1a1a1a;
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: #1a1a1a;
+        }
+
+        td {
+            padding: 8px 10px;
+            border: 1px solid #1a1a1a;
+            font-size: 13px;
+        }
+
+        /* Protocol colors */
+        .proto-https  { color: #00ff88; font-weight: bold; }
+        .proto-http   { color: #ffaa00; font-weight: bold; }
+        .proto-dns    { color: #00aaff; font-weight: bold; }
+        .proto-ssh    { color: #ff4444; font-weight: bold; }
+        .proto-mysql  { color: #cc44ff; font-weight: bold; }
+        .proto-other  { color: #888;    font-weight: bold; }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff88;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%   { opacity: 1; }
+            50%  { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<h1><span class="status-dot"></span>Live Packet Monitor</h1>
+
+<div class="stats-bar">
+    <div class="stat-box">
+        <div class="label">TOTAL</div>
+        <div class="value" id="countTotal">0</div>
+    </div>
+    <div class="stat-box">
+        <div class="label">HTTPS</div>
+        <div class="value proto-https" id="countHTTPS">0</div>
+    </div>
+    <div class="stat-box">
+        <div class="label">HTTP</div>
+        <div class="value proto-http" id="countHTTP">0</div>
+    </div>
+    <div class="stat-box">
+        <div class="label">DNS</div>
+        <div class="value proto-dns" id="countDNS">0</div>
+    </div>
+    <div class="stat-box">
+        <div class="label">SSH</div>
+        <div class="value proto-ssh" id="countSSH">0</div>
+    </div>
+    <div class="stat-box">
+        <div class="label">OTHER</div>
+        <div class="value proto-other" id="countOTHER">0</div>
+    </div>
+</div>
+
+<table>
+    <thead>
+    <tr>
+        <th>SRC IP</th>
+        <th>DST IP</th>
+        <th>SRC PORT</th>
+        <th>DST PORT</th>
+        <th>PROTOCOL</th>
+        <th>TIME</th>
+    </tr>
+    </thead>
+    <tbody id="packetTable"></tbody>
+</table>
+
+<script>
+    const table = document.getElementById('packetTable');
+    const source = new EventSource('/packets/stream');
+
+    const counts = { TOTAL: 0, HTTPS: 0, HTTP: 0, DNS: 0, SSH: 0, OTHER: 0 };
+
+    function protoClass(protocol) {
+        const map = {
+            'HTTPS': 'proto-https',
+            'HTTP':  'proto-http',
+            'DNS':   'proto-dns',
+            'SSH':   'proto-ssh',
+            'MySQL': 'proto-mysql'
+        };
+        return map[protocol] || 'proto-other';
+    }
+
+    function updateCounters(protocol) {
+        counts.TOTAL++;
+        if (counts[protocol] !== undefined) {
+            counts[protocol]++;
+        } else {
+            counts.OTHER++;
+        }
+
+        document.getElementById('countTotal').textContent = counts.TOTAL;
+        document.getElementById('countHTTPS').textContent = counts.HTTPS;
+        document.getElementById('countHTTP').textContent  = counts.HTTP;
+        document.getElementById('countDNS').textContent   = counts.DNS;
+        document.getElementById('countSSH').textContent   = counts.SSH;
+        document.getElementById('countOTHER').textContent = counts.OTHER;
+    }
+
+    source.onmessage = function(event) {
+        const packet = JSON.parse(event.data);
+        const cssClass = protoClass(packet.protocol);
+
+        const row = `
+            <tr>
+                <td>${packet.srcIp}</td>
+                <td>${packet.dstIp}</td>
+                <td>${packet.srcPort}</td>
+                <td>${packet.dstPort}</td>
+                <td class="${cssClass}">${packet.protocol}</td>
+                <td>${new Date(packet.timestamp).toLocaleTimeString()}</td>
+            </tr>`;
+
+        table.insertAdjacentHTML('afterbegin', row);
+        updateCounters(packet.protocol);
+
+        while (table.rows.length > 100) {
+            table.deleteRow(table.rows.length - 1);
+        }
+    };
+
+    source.onerror = function() {
+        console.error("SSE connection lost.");
+    };
+</script>
+
+</body>
+</html>
