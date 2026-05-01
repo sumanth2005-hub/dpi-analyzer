@@ -70,7 +70,6 @@
             font-size: 13px;
         }
 
-        /* Protocol colors */
         .proto-https  { color: #00ff88; font-weight: bold; }
         .proto-http   { color: #ffaa00; font-weight: bold; }
         .proto-dns    { color: #00aaff; font-weight: bold; }
@@ -98,6 +97,39 @@
 <body>
 
 <h1><span class="status-dot"></span>Live Packet Monitor</h1>
+<div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+
+    <select id="protocolFilter" style="background:#1a1a1a; color:#00ff88; border:1px solid #00ff88; padding:8px 12px; border-radius:4px; font-family:'Courier New'; font-size:13px;">
+        <option value="">ALL PROTOCOLS</option>
+        <option value="HTTPS">HTTPS</option>
+        <option value="HTTP">HTTP</option>
+        <option value="DNS">DNS</option>
+        <option value="SSH">SSH</option>
+        <option value="OTHER">OTHER</option>
+    </select>
+
+    <input id="ipFilter" type="text" placeholder="Filter by IP..."
+           style="background:#1a1a1a; color:#00ff88; border:1px solid #00ff88; padding:8px 12px; border-radius:4px; font-family:'Courier New'; font-size:13px; width:200px;" />
+
+    <button onclick="applyFilter()"
+            style="background:#00ff88; color:#0d0d0d; border:none; padding:8px 20px; border-radius:4px; font-family:'Courier New'; font-weight:bold; cursor:pointer; font-size:13px;">
+        APPLY
+    </button>
+
+    <button onclick="clearFilter()"
+            style="background:transparent; color:#00ff88; border:1px solid #00ff88; padding:8px 20px; border-radius:4px; font-family:'Courier New'; font-weight:bold; cursor:pointer; font-size:13px;">
+        CLEAR
+    </button>
+
+    <!-- ADDED FROM SCREENSHOT -->
+    <button onclick="loadStats()"
+            style="background:transparent; color:#ffaa00; border:1px solid #ffaa00; padding:8px 20px; border-radius:4px; font-family:'Courier New'; font-weight:bold; cursor:pointer; font-size:13px;">
+        STATS
+    </button>
+
+    <span id="statsDisplay" style="color:#ffaa00; font-size:13px; align-self:center;"></span>
+
+</div>
 
 <div class="stats-bar">
     <div class="stat-box">
@@ -198,6 +230,51 @@
     source.onerror = function() {
         console.error("SSE connection lost.");
     };
+
+    function applyFilter() {
+        const protocol = document.getElementById('protocolFilter').value;
+        const ip = document.getElementById('ipFilter').value.trim();
+
+        let url = '/packets?';
+        if (protocol) url += 'protocol=' + protocol + '&';
+        if (ip) url += 'ip=' + ip;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                table.innerHTML = '';
+                data.reverse().forEach(packet => {
+                    const cssClass = protoClass(packet.protocol);
+                    const row = `
+                        <tr>
+                            <td>${packet.srcIp}</td>
+                            <td>${packet.dstIp}</td>
+                            <td>${packet.srcPort}</td>
+                            <td>${packet.dstPort}</td>
+                            <td class="${cssClass}">${packet.protocol}</td>
+                            <td>${new Date(packet.timestamp).toLocaleTimeString()}</td>
+                        </tr>`;
+                    table.insertAdjacentHTML('beforeend', row);
+                });
+            });
+    }
+
+    function clearFilter() {
+        document.getElementById('protocolFilter').value = '';
+        document.getElementById('ipFilter').value = '';
+        table.innerHTML = '';
+    }
+
+    function loadStats() {
+        fetch('/packets/stats')
+            .then(res => res.json())
+            .then(data => {
+                const display = Object.entries(data)
+                    .map(([proto, count]) => `${proto}: ${count}`)
+                    .join(' | ');
+                document.getElementById('statsDisplay').textContent = display;
+            });
+    }
 </script>
 
 </body>

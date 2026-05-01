@@ -16,6 +16,11 @@ public class PacketService {
     private final LinkedBlockingDeque<PacketLog> packetList = new LinkedBlockingDeque<>(500);
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private final PacketParser parser = new PacketParser();
+    private final PacketRepository repository;
+
+    public PacketService(PacketRepository repository) {
+        this.repository = repository;
+    }
 
     public SseEmitter addEmitter() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
@@ -91,6 +96,7 @@ public class PacketService {
                     }
 
                     System.out.println("Captured: " + log);
+                    repository.save(log);
 
                 } catch (Exception e) {
                     System.err.println("Error processing packet: " + e.getMessage());

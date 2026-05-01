@@ -1,6 +1,14 @@
 package com.luffy.mini_dpi_java;
 
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "packets")
 public class PacketLog {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     private String srcIp;
     private String dstIp;
@@ -8,6 +16,8 @@ public class PacketLog {
     private int dstPort;
     private String protocol;
     private long timestamp;
+
+    public PacketLog() {}
 
     public PacketLog(String srcIp, String dstIp, int srcPort, int dstPort, String protocol) {
         this.srcIp = srcIp;
@@ -17,11 +27,13 @@ public class PacketLog {
         this.protocol = protocol;
         this.timestamp = System.currentTimeMillis();
     }
+
     @Override
     public String toString() {
         return srcIp + ":" + srcPort + " → " + dstIp + ":" + dstPort + " [" + protocol + "]";
     }
-    // Getters only (important for JSON)
+
+    public Long getId() { return id; }
     public String getSrcIp() { return srcIp; }
     public String getDstIp() { return dstIp; }
     public int getSrcPort() { return srcPort; }
